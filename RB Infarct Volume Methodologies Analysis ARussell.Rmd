@@ -9,10 +9,12 @@ editor_options:
 
 All code for meta-analysis investigating how methodologies affect infarct volume in Rose Bengal model of stroke. This analysis summarises Rose Bengal stroke methodologies and creates predictions on how they influence final infarct volume. 
 Requires two .csv excel files, Russell_Data_Extraction_Rose_Bengal_11.csv and Russell_Rose_Bengal_Quality_2.csv
-Can also use the pre-run workspace file to save time running the code: RB_Treatment_Efficacy_Workspace_ARussell_5.RData RENAME
-Markdown file started on 28/11/2022, last updated xx/xx/2023 UPDATE
+Can also use the pre-run workspace file to save time running the code: RB_controls_data.RData
+Markdown file started on 28/11/2022, last updated 16/09/2023 
 
 This analysis is the second half of a two-part analysis of Rose Bengal stroke literature. The first half assesses treatment efficacy. The protocol for both these analyses is available on PROSPERO at http://www.crd.york.ac.uk/PROSPERO/display_record.php?ID=CRD42019115429
+
+Updated code, data, and information on this analysis can be found at https://github.com/A-M-Russell/Rose-Bengal-Stroke-Methodologies_Review
 
 Code chunks with plot outputs are set to eval=FALSE so they won't produce plots unless you run them deliberately.
 Most chunks are set to include=FALSE so the code will run but the outputs won't print in a knitted file to reduce the output file length. Remove this for any sections you wish to output into a knitted file.
@@ -661,7 +663,10 @@ summary(dfc3_Models$Light_time_cat) #leaving as it's a logical order (low to hig
 
 ```
 
-```{r Dataframe_summary_tables, include=FALSE, eval=FALSE}
+```{r Dataframe_summary_tables, include=FALSE}
+
+summary(dfc3_Unique$Light_source)
+
 #make dataframe for summary tables
 dfc3_summary_tables <- dfc3_Models #428 experiments
 #remove "other" species
@@ -679,14 +684,15 @@ dfc3_summary_tables_rat <- droplevels(dfc3_summary_tables[!dfc3_summary_tables$A
 # Create group for mice only
 dfc3_summary_tables_mouse <- droplevels(dfc3_summary_tables[!dfc3_summary_tables$Animal == "Rat", ])
 
-summary(dfc3_summary_tables_rat$Surgical_level)
-summary(dfc3_summary_tables_mouse$Surgical_level)
+#summaries by rat/mouse (swap out variables as needed)
+summary(dfc3_summary_tables_rat$Light_source)
+summary(dfc3_summary_tables_mouse$Light_source)
 
-#summary tables by surgical level
-table(dfc3_summary_tables_rat$Anaesthetic, dfc3_summary_tables_rat$Surgical_level) #rat
-table(dfc3_summary_tables_mouse$Anaesthetic, dfc3_summary_tables_mouse$Surgical_level) #mouse
+#summary tables by surgical level (swap out first variable as needed)
+table(dfc3_summary_tables_rat$Light_aperture_cat, dfc3_summary_tables_rat$Surgical_level) #rat
+table(dfc3_summary_tables_mouse$Light_aperture_cat, dfc3_summary_tables_mouse$Surgical_level) #mouse
 
-#summary for continuous variables
+#summary for continuous variables (swap out first variable as needed)
 #rat
 tapply(dfc3_summary_tables_rat$Infarct_time, dfc3_summary_tables_rat$Surgical_level, mean, na.rm=TRUE) #mean
 tapply(dfc3_summary_tables_rat$Infarct_time, dfc3_summary_tables_rat$Surgical_level, sd, na.rm=TRUE) #standard deviation
@@ -694,11 +700,12 @@ tapply(dfc3_summary_tables_rat$Infarct_time, dfc3_summary_tables_rat$Surgical_le
 tapply(dfc3_summary_tables_mouse$Infarct_time, dfc3_summary_tables_mouse$Surgical_level, mean, na.rm=TRUE) #mean
 tapply(dfc3_summary_tables_mouse$Infarct_time, dfc3_summary_tables_mouse$Surgical_level, sd, na.rm=TRUE) #standard deviation
 
-#summary for modal table - most common methods by rats and mice
+#summary for modal table - most common methods by rats and mice (swap out first variable as needed)
 summary(dfc3_summary_tables_rat$Infarct_measurement)[which.max(summary(dfc3_summary_tables_rat$Infarct_measurement))] #rat
 summary(dfc3_summary_tables_mouse$Infarct_measurement)[which.max(summary(dfc3_summary_tables_mouse$Infarct_measurement))] #mouse
 
 summary(as.factor(dfc3_summary_tables_mouse$Infarct_time))
+
 ```
 
 ```{r Dataframe_for_models_remove_small_factors, include=FALSE}
@@ -981,6 +988,8 @@ plot(glm_full) #some diagnostic plots. Annoyingly it won't plot q-q plots, but J
 #after assessing fit of beta distribution model vs a transformed model (making the data fit a normal distribution) we decided to use the lm transformed model. Both fit well, but the lm is technically simpler and we have a wider range of tools we can use with an lm. Also the lm appears to be outputting a much more conservative estimate of variable significance, and has a higher R^2 so may explain the data better
 ```
 
+
+
 Outlier detection
 ```{r Model_lm_checking, evaluate=FALSE, include=FALSE}
 #selected model: transformed linear model - now check for outliers etc
@@ -1175,9 +1184,26 @@ tab_model(lm_clean_transformed,
 tab_df(car::Anova(lm_clean_transformed), show.rownames = TRUE, digits=4,
        file="lm_main_model_ANOVA_2.html") #this is type 3 - order doesn't matter.
 
+```
 
+```{r Model_outcome_variable_check, eval=False, include=FALSE}
+#quick test to check if body weight or age is affecting predicted brain volume, i.e. are brains bigger in larger or older animals?
+#if yes, this outcome variable is not particularly reliable
+
+lm_weight_test <- lm(data = dfc3_Models_clean,
+                     Infarct_percent_control^Selected.lambda_clean  ~
+                       Weight_g_mean +
+                       Age_weeks_mean,
+                     weights = N_animals_control
+   )
+
+summary(lm_weight_test)
+car::Anova(lm_weight_test)
+
+#neither predictor variable is significant, seems infarct volume not predicted by animal's age or weight
 
 ```
+
 
 
 #Creating predicted value figures
@@ -2355,10 +2381,13 @@ df_pplot3$Category <- ifelse(df_pplot3$Variable %in% c('Xenon',
 
 ```{r Expected_brain_volume, include=FALSE}
 # Expected value of brain volume (essentially mean) - absolute value
-Expected_brain_vol <- (mean(dfc3_Models_clean$Infarct_percent_control^Selected.lambda_clean))^(1/Selected.lambda_clean)
+Expected_brain_vol <- (mean(dfc3_Models_clean$Infarct_percent_control^Selected.lambda_clean))^(1/Selected.lambda_clean) #mean
+Expected_brain_vol_SD <- (sd(dfc3_Models_clean$Infarct_percent_control^Selected.lambda_clean))^(1/Selected.lambda_clean) #standard deviation of 
 
 # Brain volume as a percentage of "average" brain volume
 Expected_brain_vol_percent <- (100/Expected_brain_vol)
+
+summary(dfc3_Models_clean$Comorbidity)
 
 ```
 
@@ -3810,7 +3839,7 @@ grid_Intensity<-expand.grid(Animal = "Rat",
      Light_source = "Xenon",
      Light_aperture_cat = "0.02-1mm",
      Light_time_cat= "0.5-5mins", 
-     Light_intensity_Wcm2 = seq(0.5, 10, by=0.2), # start at 0.5W/cm2 (min is 0.000249), go up to 10W/cm2 (max is 15.9, almost none that high) in 0.2W/cm2 increments
+     Light_intensity_Wcm2 = seq(0.5, 16, by=0.2), # start at 0.5W/cm2 (min is 0.000249), go up to 16W/cm2 (max is 15.9, almost none that high) in 0.2W/cm2 increments
    weights = 8) #average n of animals = ~8
 
 # generate predicted values from our model
@@ -3842,15 +3871,15 @@ df_Intensity_predicted$UCI<-df_Intensity_predicted$UCI-Intensity.correct
 
 ```{r Prediction_plot_intensity, include=FALSE, eval=FALSE}
 
-pdf("Continuous_predicted_intensity_3.pdf", width = 4.5, height = 4)
+pdf("Continuous_predicted_intensity_4.pdf", width = 4.5, height = 4)
 ggplot(df_Intensity_predicted, aes(x=Intensity, y=Infarct_volume*Expected_brain_vol_percent)) +
   geom_ribbon(aes(ymax=UCI*Expected_brain_vol_percent, ymin=LCI*Expected_brain_vol_percent), 
               alpha=0.3,
               fill=plasma(4)[3]) +
   geom_line(color="#292829", size=1) +
   geom_hline(yintercept=0, lty=2, size =1) +
-  scale_x_continuous(breaks=seq(-1,10,by=1)) +
-  scale_y_continuous(breaks=seq(-50,450,by=50)) +
+  scale_x_continuous(breaks=seq(-1,16,by=2)) +
+  scale_y_continuous(breaks=seq(-50,850,by=100)) +
   theme_classic() +
   labs(x = "Light intensity (W/cm^2)",
        y = "% of average infarct volume")+
